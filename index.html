@@ -84,28 +84,29 @@
   <div class="page-shell">
     <nav class="page-nav" aria-label="ページ一覧">
       <span class="page-nav__title">USS Blue Sky</span>
-      <a href="/page/chat" data-route="/page/chat">Chat</a>
-      <a href="/page/history" data-route="/page/history">History</a>
+      <a href="#chat" data-route="chat">Chat</a>
+      <a href="#history" data-route="history">History</a>
     </nav>
     <main id="app"></main>
   </div>
 
   <script>
+    const defaultRoute = 'chat';
     const routes = {
-      '/page/chat': '/pages/ChatPage.html',
-      '/page/history': '/pages/HistoryPage.html',
+      chat: 'pages/ChatPage.html',
+      history: 'pages/HistoryPage.html',
     };
 
     const app = document.getElementById('app');
     const navLinks = Array.from(document.querySelectorAll('[data-route]'));
 
-    function normalizePath(pathname) {
-      return pathname.replace(/\/$/, '') || '/page/chat';
+    function normalizeRoute(hash) {
+      return hash.replace(/^#\/?/, '').replace(/\/$/, '') || defaultRoute;
     }
 
-    function setActiveLink(pathname) {
+    function setActiveLink(route) {
       navLinks.forEach((link) => {
-        const isActive = link.dataset.route === pathname;
+        const isActive = link.dataset.route === route;
         link.toggleAttribute('aria-current', isActive);
         if (isActive) {
           link.setAttribute('aria-current', 'page');
@@ -119,58 +120,44 @@
       return div.innerHTML;
     }
 
-    function renderNotFound(pathname) {
-      const safePathname = escapeHtml(pathname);
+    function renderNotFound(route) {
+      const safeRoute = escapeHtml(route);
       app.innerHTML = `
         <section class="not-found">
           <div class="not-found__card">
             <h1>Page not found</h1>
-            <p><code>${safePathname}</code> に対応するページが見つかりません。</p>
-            <p><a href="/page/chat" data-fallback-link>Chat ページへ移動</a></p>
+            <p><code>#${safeRoute}</code> に対応するページが見つかりません。</p>
+            <p><a href="#${defaultRoute}" data-fallback-link>Chat ページへ移動</a></p>
           </div>
         </section>
       `;
-      const fallbackLink = app.querySelector('[data-fallback-link]');
-      fallbackLink.addEventListener('click', handleNavigation);
     }
 
-    function renderRoute(pathname) {
-      const normalizedPath = normalizePath(pathname);
-      const pageSource = routes[normalizedPath];
-      setActiveLink(normalizedPath);
+    function renderRoute() {
+      const route = normalizeRoute(window.location.hash);
+      const pageSource = routes[route];
+      setActiveLink(route);
 
       if (!pageSource) {
-        renderNotFound(normalizedPath);
+        renderNotFound(route);
         return;
       }
 
       app.innerHTML = '';
       const frame = document.createElement('iframe');
       frame.id = 'page-frame';
-      frame.title = `${normalizedPath} page`;
+      frame.title = `${route} page`;
       frame.src = pageSource;
       app.appendChild(frame);
     }
 
-    function handleNavigation(event) {
-      const link = event.currentTarget;
-      const href = link.getAttribute('href');
-      if (!href || !href.startsWith('/')) {
-        return;
-      }
-
-      event.preventDefault();
-      window.history.pushState({}, '', href);
-      renderRoute(window.location.pathname);
+    if (!window.location.hash) {
+      window.location.replace(`${window.location.pathname}${window.location.search}#${defaultRoute}`);
+    } else {
+      renderRoute();
     }
 
-    navLinks.forEach((link) => link.addEventListener('click', handleNavigation));
-    window.addEventListener('popstate', () => renderRoute(window.location.pathname));
-
-    if (window.location.pathname === '/') {
-      window.history.replaceState({}, '', '/page/chat');
-    }
-    renderRoute(window.location.pathname);
+    window.addEventListener('hashchange', renderRoute);
   </script>
 </body>
 </html>
