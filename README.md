@@ -1,6 +1,6 @@
-# USS Blue Sky Pages
+# USS Project Pages
 
-Static site wrapper for the bundled USS Blue Sky pages.
+Static site wrapper for the bundled USS Project pages.
 
 ## View locally
 
