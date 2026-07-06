@@ -168,7 +168,7 @@
       '| Submitted | ' + new Date().toISOString() + ' |',
       '| From | ' + (name || 'anonymous') + ' |', '',
       CONFIG.marker, '',
-      '_Filed via the on-page feedback widget. An automated fix will be attempted and a PR linked here._'
+      '_Filed via the on-page feedback widget._'
     ].join('\n');
 
     var base = 'https://github.com/' + CONFIG.owner + '/' + CONFIG.repo + '/issues/new';
