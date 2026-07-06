@@ -1,0 +1,86 @@
+# AI Feedback Fixer
+# ------------------
+# Fires when a visitor files feedback through the on-page widget
+# (detected by the hidden marker in the issue body), or when anyone
+# manually adds the "ai-fix" label to any issue.
+#
+# Claude reads the issue, edits the mockup, opens a PR, and links it
+# back on the issue. Requires the ANTHROPIC_API_KEY repo secret and
+# "Allow GitHub Actions to create and approve pull requests" enabled
+# in Settings → Actions → General.
+
+name: AI Feedback Fixer
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  fix:
+    if: |
+      (github.event.action == 'opened' && contains(github.event.issue.body, 'smartgraph-feedback-widget')) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'ai-fix')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: feedback-fix-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Label the feedback issue
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create "mockup-feedback" --repo "$GITHUB_REPOSITORY" \
+            --color "3F8A7C" --description "Filed via the on-page feedback widget" --force
+          gh issue edit "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY" \
+            --add-label "mockup-feedback"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude fixes the feedback
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            A visitor pinned feedback on the live mockup site and it became
+            issue #${{ github.event.issue.number }} in this repository.
+
+            Work through these steps:
+
+            1. Read the issue with:
+               gh issue view ${{ github.event.issue.number }} --json title,body
+               The body contains the page route (#chat / #history), a CSS
+               selector for the pinned element, its visible text, and click
+               coordinates as viewport percentages.
+
+            2. This is a plain static site: index.html is a shell that loads
+               pages/ChatPage.html or pages/HistoryPage.html into an iframe
+               based on the hash route. Use the selector and route from the
+               issue to locate the exact element in the right file.
+
+            3. Implement the requested change. Keep the edit minimal, match
+               the existing visual style (colors, spacing, naming), and touch
+               only what the feedback asks for.
+
+            4. Create a branch named claude/feedback-${{ github.event.issue.number }},
+               commit with a clear message, push it, then open a PR to main:
+               gh pr create --title "Fix: <short summary> (#${{ github.event.issue.number }})" \
+                 --body "Closes #${{ github.event.issue.number }}. <one-paragraph summary of the change>"
+
+            5. Comment on issue #${{ github.event.issue.number }} with one
+               sentence describing the change and the PR link.
+
+            If the feedback is unclear, out of scope for this site, spam, or
+            would require product decisions, make NO code change — instead
+            comment on the issue explaining what is needed, and stop.
+          claude_args: |
+            --max-turns 40
+            --allowedTools "Edit,Read,Write,Glob,Grep,Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*)"
