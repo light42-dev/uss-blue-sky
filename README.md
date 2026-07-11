@@ -21,4 +21,4 @@ Use `index.html` as the site entry point. The bundled pages live under `pages/` 
 
 ## Feedback widget
 
-Every page shows a floating **💬 Feedback** button. Pinned comments automatically become labeled GitHub issues. Optional phase 2 adds AI auto-fix via PR. Setup and details: [FEEDBACK-SETUP.md](FEEDBACK-SETUP.md).
+Every page shows a floating **💬 Feedback** button. Pinned comments capture a screenshot with the selected area highlighted, then open as pre-filled GitHub issues. Paste the copied screenshot into the Screenshot section before submitting; the issue is then labeled and acknowledged automatically.
