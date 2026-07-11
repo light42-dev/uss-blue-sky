@@ -2,8 +2,7 @@
  * SmartGraph Mockup Feedback Widget
  * ---------------------------------
  * Lets any visitor pin a comment onto the mockup. Submitting opens a
- * pre-filled GitHub "new issue" page; pressing Submit there files the
- * issue, which triggers the AI-fix workflow in .github/workflows/.
+ * pre-filled GitHub "new issue" page. Submitting there files the issue.
  *
  * Zero dependencies, zero backend. Configure below.
  */
@@ -14,7 +13,7 @@
   var CONFIG = {
     owner: 'light42-dev',
     repo: 'uss-blue-sky',
-    // Hidden marker the GitHub Action looks for to auto-trigger the AI fix.
+    // Hidden marker used by the feedback workflow to identify these issues.
     marker: '<!-- smartgraph-feedback-widget v1 -->',
     maxCommentChars: 1500,
     maxUrlChars: 7500
@@ -26,12 +25,15 @@
     formTitle: 'Describe the change',
     placeholder: 'What should be different here? e.g. "This button is too small on mobile"',
     nameLabel: 'Name (optional)',
-    submit: 'File on GitHub →',
+    submit: 'Capture & file →',
     cancel: 'Cancel',
-    afterOpen: 'A pre-filled GitHub issue opened in a new tab — press "Submit new issue" there to file it. The AI fix kicks off automatically.',
+    afterOpen: 'A pre-filled GitHub issue opened in a new tab — press "Submit new issue" there to send your feedback.',
     popupBlocked: 'The browser blocked the new tab. Allow pop-ups for this site, or use this link:',
     openLink: 'Open GitHub issue form',
-    tooLong: 'Comment shortened to fit GitHub URL limits.'
+    tooLong: 'Comment shortened to fit GitHub URL limits.',
+    capturing: 'Capturing...',
+    screenshotReady: 'The highlighted screenshot is in your clipboard. Paste it into the Screenshot section before submitting.',
+    captureFailed: 'Screenshot was not captured. Choose "This Tab" in the sharing dialog and try again.'
   };
 
   // ── Shadow-DOM host (keeps mockup CSS untouched) ───────────────
@@ -158,6 +160,9 @@
     var body = [
       '### 💬 Mockup feedback', '',
       '> ' + comment.split('\n').join('\n> '), '',
+      '### Screenshot', '',
+      '_A screenshot with the selected area highlighted is copied to your clipboard. Paste it here (Ctrl/Cmd+V) before submitting._', '',
+
       '| Field | Value |', '| --- | --- |',
       '| Page route | `#' + route + '` |',
       '| Pinned element | `' + pin.info.selector + '` |',
@@ -178,6 +183,91 @@
       url = base + '?title=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(body);
     }
     return url;
+  }
+
+  // ── Screenshot capture ─────────────────────────────────────────
+  function waitForVideoFrame(video) {
+    return new Promise(function (resolve) {
+      if (video.requestVideoFrameCallback) {
+        video.requestVideoFrameCallback(function () { resolve(); });
+      } else {
+        requestAnimationFrame(resolve);
+      }
+    });
+  }
+
+  function canvasToBlob(canvas) {
+    return new Promise(function (resolve, reject) {
+      canvas.toBlob(function (blob) {
+        if (blob) resolve(blob);
+        else reject(new Error('Unable to create screenshot.'));
+      }, 'image/png');
+    });
+  }
+
+  function highlightSelection(ctx, canvas, pin) {
+    var scaleX = canvas.width / window.innerWidth;
+    var scaleY = canvas.height / window.innerHeight;
+    var scale = Math.min(scaleX, scaleY);
+    var x = pin.x * scaleX;
+    var y = pin.y * scaleY;
+    var radius = 28 * scale;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(210, 96, 58, .20)';
+    ctx.strokeStyle = '#d2603a';
+    ctx.lineWidth = Math.max(4, 4 * scale);
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#d2603a';
+    ctx.beginPath();
+    ctx.arc(x, y, 5 * scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  async function captureHighlightedScreenshot(pin) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      throw new Error('Screen capture is unavailable.');
+    }
+
+    var stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor: 'never' },
+      audio: false
+    });
+    var video = document.createElement('video');
+    video.muted = true;
+    video.srcObject = stream;
+    host.style.visibility = 'hidden';
+
+    try {
+      await video.play();
+      await waitForVideoFrame(video);
+      if (!video.videoWidth || !video.videoHeight) throw new Error('No video frame.');
+      var canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      var context = canvas.getContext('2d');
+      context.drawImage(video, 0, 0);
+      highlightSelection(context, canvas, pin);
+      return await canvasToBlob(canvas);
+    } finally {
+      host.style.visibility = '';
+      video.pause();
+      video.srcObject = null;
+      stream.getTracks().forEach(function (track) { track.stop(); });
+    }
+  }
+
+  async function copyScreenshot(blob) {
+    if (!navigator.clipboard || !window.ClipboardItem) {
+      throw new Error('Image clipboard access is unavailable.');
+    }
+    await navigator.clipboard.write([
+      new window.ClipboardItem({ 'image/png': blob })
+    ]);
   }
 
   // ── UI pieces ──────────────────────────────────────────────────
@@ -249,17 +339,32 @@
 
     ta.addEventListener('input', function () { submitBtn.disabled = !ta.value.trim(); });
     cancelBtn.addEventListener('click', exitToIdle);
-    submitBtn.addEventListener('click', function () {
+    submitBtn.addEventListener('click', async function () {
       var comment = ta.value.trim();
       if (!comment) return;
+      var pin = state.pin;
       try { localStorage.setItem('sgfb-name', nameInput.value.trim()); } catch (e) {}
-      var url = buildIssueUrl(comment, nameInput.value.trim(), state.pin);
-      var win = window.open(url, '_blank', 'noopener');
-      exitToIdle();
-      if (win) {
-        toast(STRINGS.afterOpen, 9000);
-      } else {
-        toast(STRINGS.popupBlocked + ' <a href="' + url + '" target="_blank" rel="noopener">' + STRINGS.openLink + '</a>');
+      submitBtn.disabled = true;
+      submitBtn.textContent = STRINGS.capturing;
+      var draft = window.open('about:blank', '_blank');
+
+      try {
+        var screenshot = await captureHighlightedScreenshot(pin);
+        await copyScreenshot(screenshot);
+        var url = buildIssueUrl(comment, nameInput.value.trim(), pin);
+        exitToIdle();
+        if (draft) {
+          draft.opener = null;
+          draft.location.replace(url);
+          toast(STRINGS.afterOpen + ' ' + STRINGS.screenshotReady, 12000);
+        } else {
+          toast(STRINGS.popupBlocked + ' <a href="' + url + '" target="_blank" rel="noopener">' + STRINGS.openLink + '</a> ' + STRINGS.screenshotReady, 12000);
+        }
+      } catch (e) {
+        if (draft) draft.close();
+        submitBtn.disabled = false;
+        submitBtn.textContent = STRINGS.submit;
+        toast(STRINGS.captureFailed, 9000);
       }
     });
 

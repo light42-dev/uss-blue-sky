@@ -1,14 +1,5 @@
-# Feedback Intake (no API key required)
-# --------------------------------------
-# Proves the automation loop: when a visitor files feedback through the
-# on-page widget, this labels the issue and posts an acknowledgment —
-# using only the built-in GITHUB_TOKEN.
-#
-# Phase 2 (AI auto-fix): move the two files from .github/workflows-parked/
-# into .github/workflows/ and add the ANTHROPIC_API_KEY secret.
-# See FEEDBACK-SETUP.md.
-
-name: Feedback Intake
+# Labels and acknowledges feedback submitted from the widget.
+name: Feedback
 
 on:
   issues:
@@ -30,4 +21,4 @@ jobs:
           gh label create "mockup-feedback" --repo "$REPO" --color "3F8A7C" \
             --description "Filed via the on-page feedback widget" --force
           gh issue edit "$NUM" --repo "$REPO" --add-label "mockup-feedback"
-          gh issue comment "$NUM" --repo "$REPO" --body "✅ **Feedback received.** Filed automatically from the mockup page and labeled \`mockup-feedback\`. AI auto-fix activates in phase 2 — see \`FEEDBACK-SETUP.md\`."
+          gh issue comment "$NUM" --repo "$REPO" --body "✅ **Feedback received.** Your issue has been labeled \`mockup-feedback\`."
