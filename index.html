@@ -15,8 +15,18 @@
       margin: 0;
     }
 
+    :root {
+      --polkadot-base: #e7e5df;
+      --polkadot-dot: rgba(63, 138, 124, 0.18);
+      --polkadot-size: 28px;
+      --polkadot-radius: 3px;
+    }
+
     body {
-      background: #e7e5df;
+      background-color: var(--polkadot-base);
+      background-image: radial-gradient(var(--polkadot-dot) var(--polkadot-radius), transparent var(--polkadot-radius));
+      background-position: 0 0;
+      background-size: var(--polkadot-size) var(--polkadot-size);
       color: #2c2823;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -120,6 +130,33 @@
       return div.innerHTML;
     }
 
+    const polkadotCss = `
+      html,
+      body,
+      body > div:first-child,
+      #dc-root,
+      .sc-host {
+        background-color: #e7e5df !important;
+        background-image: radial-gradient(rgba(63, 138, 124, 0.18) 3px, transparent 3px) !important;
+        background-position: 0 0 !important;
+        background-size: 28px 28px !important;
+      }
+    `;
+
+    function applyPolkadotBackground(frame) {
+      try {
+        const doc = frame.contentDocument;
+        if (!doc || doc.getElementById('uss-polkadot-background')) return;
+
+        const style = doc.createElement('style');
+        style.id = 'uss-polkadot-background';
+        style.textContent = polkadotCss;
+        doc.head.appendChild(style);
+      } catch (error) {
+        console.warn('Could not apply polkadot background:', error);
+      }
+    }
+
     function renderNotFound(route) {
       const safeRoute = escapeHtml(route);
       app.innerHTML = `
@@ -147,6 +184,7 @@
       const frame = document.createElement('iframe');
       frame.id = 'page-frame';
       frame.title = `${route} page`;
+      frame.addEventListener('load', () => applyPolkadotBackground(frame));
       frame.src = pageSource;
       app.appendChild(frame);
     }
